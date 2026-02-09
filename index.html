@@ -4,10 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Şantiye Hatalı İmalat (Offline)</title>
-
-  <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#111111">
-
+  <link rel="manifest" href="manifest.json">
   <style>
     :root { color-scheme: dark; }
     body{font-family:system-ui,Segoe UI,Arial;margin:0;background:#111;color:#eee}
@@ -83,9 +81,10 @@
     <label>Hata Açıklaması</label>
     <textarea id="aciklama" placeholder="Kısa ve net açıklama..."></textarea>
 
-    <label>Fotoğraf (zorunlu)</label>
+    <label>Fotoğraf (zorunlu) — otomatik küçültülür</label>
     <input id="foto" type="file" accept="image/*" capture="environment" />
     <img id="preview" style="display:none" alt="Önizleme">
+    <div class="muted small" id="psize" style="margin-top:6px"></div>
 
     <div class="btns">
       <button class="good" id="save">Kaydet (Offline)</button>
@@ -99,11 +98,7 @@
     </div>
 
     <div class="muted small" style="margin-top:8px">
-      Gönderim yöntemi: <b>sendBeacon</b> (CORS’a takılmaz). Cevap beklemez; Sheet/Drive’dan kontrol edilir.
-    </div>
-
-    <div class="muted small" style="margin-top:8px">
-      <b>SÜRÜM: v3</b>
+      <b>SÜRÜM: v4</b> (Foto sıkıştırma + form-encoded beacon)
     </div>
   </div>
 
@@ -120,7 +115,7 @@
 
   const $ = (id) => document.getElementById(id);
   const netEl = $("net"), qEl = $("qcount"), lastEl = $("last"), listEl = $("list");
-  const preview = $("preview");
+  const preview = $("preview"), psize = $("psize");
 
   function setNet() {
     const ok = navigator.onLine;
@@ -131,7 +126,7 @@
   window.addEventListener("offline", setNet);
   setNet();
 
-  const KEY = "santiye_kuyruk_v3"; // versiyon arttırdım (eski kuyrukla karışmasın)
+  const KEY = "santiye_kuyruk_v4";
 
   function loadQueue() {
     try { return JSON.parse(localStorage.getItem(KEY) || "[]"); } catch { return []; }
@@ -141,23 +136,6 @@
     qEl.textContent = q.length;
     renderList(q);
   }
-
-  async function fileToBase64(file) {
-    return new Promise((res, rej) => {
-      const r = new FileReader();
-      r.onload = () => res(r.result);
-      r.onerror = rej;
-      r.readAsDataURL(file);
-    });
-  }
-
-  $("foto").addEventListener("change", async (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const b64 = await fileToBase64(f);
-    preview.src = b64;
-    preview.style.display = "block";
-  });
 
   function clearForm() {
     $("ada").value = "";
@@ -169,6 +147,8 @@
     $("foto").value = "";
     preview.style.display = "none";
     preview.src = "";
+    psize.textContent = "";
+    window.__PHOTO_DATA_URL__ = "";
   }
 
   function validate() {
@@ -178,20 +158,57 @@
     const kat = $("kat").value.trim();
     const imalat = $("imalat").value.trim();
     const aciklama = $("aciklama").value.trim();
-    const fotoFile = $("foto").files?.[0];
+    const photoDataUrl = (window.__PHOTO_DATA_URL__ || "").trim();
 
     if (!ada || !tip || !blok || !kat || !imalat) return { ok:false, msg:"Ada/Tip/Blok/Kat/İmalat zorunlu." };
     if (!aciklama) return { ok:false, msg:"Hata açıklaması zorunlu." };
-    if (!fotoFile && !preview.src) return { ok:false, msg:"Fotoğraf zorunlu." };
+    if (!photoDataUrl) return { ok:false, msg:"Fotoğraf zorunlu." };
     return { ok:true };
   }
+
+  // ✅ Fotoğrafı otomatik küçült + sıkıştır (MAX 1600px, JPEG kalite 0.75)
+  async function compressImage(file, maxSize=1600, quality=0.75) {
+    const img = await new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = rej;
+      i.src = URL.createObjectURL(file);
+    });
+
+    const w = img.width, h = img.height;
+    const scale = Math.min(1, maxSize / Math.max(w, h));
+    const nw = Math.round(w * scale);
+    const nh = Math.round(h * scale);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = nw; canvas.height = nh;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, nw, nh);
+
+    const dataUrl = canvas.toDataURL("image/jpeg", quality);
+    URL.revokeObjectURL(img.src);
+    return dataUrl;
+  }
+
+  $("foto").addEventListener("change", async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+
+    const dataUrl = await compressImage(f, 1600, 0.75);
+    window.__PHOTO_DATA_URL__ = dataUrl;
+
+    preview.src = dataUrl;
+    preview.style.display = "block";
+
+    // yaklaşık boyut bilgisi
+    const approxBytes = Math.round((dataUrl.length * 3) / 4);
+    const kb = Math.round(approxBytes / 1024);
+    psize.textContent = `Sıkıştırılmış foto yaklaşık: ${kb} KB`;
+  });
 
   $("save").addEventListener("click", async () => {
     const v = validate();
     if (!v.ok) return alert(v.msg);
-
-    const fotoFile = $("foto").files?.[0];
-    const photoDataUrl = fotoFile ? await fileToBase64(fotoFile) : preview.src;
 
     const item = {
       id: (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + "_" + Math.random(),
@@ -202,7 +219,7 @@
       kat: $("kat").value.trim(),
       imalat: $("imalat").value.trim(),
       aciklama: $("aciklama").value.trim(),
-      photoDataUrl: photoDataUrl,
+      photoDataUrl: window.__PHOTO_DATA_URL__,
       sent: false
     };
 
@@ -213,14 +230,17 @@
     clearForm();
   });
 
-  // ✅ CORS’a takılmayan gönderim (cevap beklemez)
+  // ✅ CORS’a takılmayan gönderim: sendBeacon + form-encoded
   function sendOne(item) {
     const payload = { apiKey: API_KEY, ...item };
+    const body = new URLSearchParams({ payload: JSON.stringify(payload) }).toString();
+
     const ok = navigator.sendBeacon(
       ENDPOINT_URL,
-      new Blob([JSON.stringify(payload)], { type: "text/plain;charset=UTF-8" })
+      new Blob([body], { type: "application/x-www-form-urlencoded;charset=UTF-8" })
     );
-    if (!ok) throw new Error("sendBeacon false (telefon gönderimi başlatamadı).");
+
+    if (!ok) throw new Error("sendBeacon false (gönderim başlatılamadı).");
   }
 
   $("sync").addEventListener("click", async () => {
