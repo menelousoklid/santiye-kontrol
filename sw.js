@@ -1,5 +1,5 @@
-const CACHE = "saha-cache-v3";
-const ASSETS = ["./", "./index.html", "./manifest.json"];
+const CACHE = "saha-cache-v5";
+const ASSETS = ["./", "./index.html", "./manifest.json", "./sw.js"];
 
 self.addEventListener("install", (e) => {
   self.skipWaiting();
