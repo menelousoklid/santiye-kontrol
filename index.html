@@ -28,7 +28,6 @@
     button.ghost{background:transparent}
     button:disabled{opacity:.6;cursor:not-allowed}
     img{max-width:100%;border-radius:12px;border:1px solid #222;margin-top:10px}
-    a{color:#7db3ff}
     .pill{display:inline-block;padding:4px 10px;border:1px solid #333;border-radius:999px;font-size:12px;margin-left:8px}
     .small{font-size:12px}
   </style>
@@ -100,7 +99,11 @@
     </div>
 
     <div class="muted small" style="margin-top:8px">
-      Not: “Gönder” butonu kayıtları Google Sheet + Drive’a yollar. (Cevap okumadan gönderir.)
+      Gönderim yöntemi: <b>sendBeacon</b> (CORS’a takılmaz). Cevap beklemez; Sheet/Drive’dan kontrol edilir.
+    </div>
+
+    <div class="muted small" style="margin-top:8px">
+      <b>SÜRÜM: v3</b>
     </div>
   </div>
 
@@ -112,10 +115,7 @@
 </div>
 
 <script>
-  // ✅ APPS SCRIPT WEB APP URL (Senin verdiğin)
   const ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbycdbgff4_pGzZ6bYb2VUqTQnaW_mY9k5IcHy_QPFzHi9S0lfUpB63aCiPQzDibbpt6/exec";
-
-  // ✅ Apps Script içindeki API_KEY ile aynı olmalı
   const API_KEY = "12345";
 
   const $ = (id) => document.getElementById(id);
@@ -131,8 +131,7 @@
   window.addEventListener("offline", setNet);
   setNet();
 
-  // --- Kuyruk (offline kayıt deposu) ---
-  const KEY = "santiye_kuyruk_v2";
+  const KEY = "santiye_kuyruk_v3"; // versiyon arttırdım (eski kuyrukla karışmasın)
 
   function loadQueue() {
     try { return JSON.parse(localStorage.getItem(KEY) || "[]"); } catch { return []; }
@@ -146,7 +145,7 @@
   async function fileToBase64(file) {
     return new Promise((res, rej) => {
       const r = new FileReader();
-      r.onload = () => res(r.result); // data:image/...;base64,....
+      r.onload = () => res(r.result);
       r.onerror = rej;
       r.readAsDataURL(file);
     });
@@ -214,17 +213,14 @@
     clearForm();
   });
 
-  // ✅ CORS’Suz gönderim: sendBeacon (cevap beklemeden gönderir)
+  // ✅ CORS’a takılmayan gönderim (cevap beklemez)
   function sendOne(item) {
     const payload = { apiKey: API_KEY, ...item };
-
     const ok = navigator.sendBeacon(
       ENDPOINT_URL,
       new Blob([JSON.stringify(payload)], { type: "text/plain;charset=UTF-8" })
     );
-
-    if (!ok) throw new Error("Gönderim başlatılamadı (sendBeacon false).");
-    return true;
+    if (!ok) throw new Error("sendBeacon false (telefon gönderimi başlatamadı).");
   }
 
   $("sync").addEventListener("click", async () => {
@@ -237,16 +233,14 @@
     $("sync").disabled = true;
     try {
       let sentCount = 0;
-
       for (const item of pending) {
         sendOne(item);
-        item.sent = true; // gönderildi olarak işaretle
+        item.sent = true;
         sentCount++;
         saveQueue(q);
       }
-
       lastEl.textContent = `• ${sentCount} kayıt gönderildi ✔️ (Sheet/Drive’dan kontrol et)`;
-      alert("Gönderildi ✅ Şimdi Google Sheet ve Drive klasöründen kontrol et.");
+      alert("Gönderildi ✅ Şimdi Google Sheet (KAYITLAR) ve Drive klasöründen kontrol et.");
     } catch (e) {
       alert("Gönderim durdu: " + e.message);
     } finally {
@@ -255,6 +249,15 @@
   });
 
   $("clear").addEventListener("click", clearForm);
+
+  function escapeHtml(s){
+    return String(s)
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#039;");
+  }
 
   function renderList(q) {
     listEl.innerHTML = "";
@@ -276,18 +279,8 @@
     qEl.textContent = q.length;
   }
 
-  function escapeHtml(s){
-    return String(s)
-      .replaceAll("&","&amp;")
-      .replaceAll("<","&lt;")
-      .replaceAll(">","&gt;")
-      .replaceAll('"',"&quot;")
-      .replaceAll("'","&#039;");
-  }
-
   saveQueue(loadQueue());
 
-  // PWA service worker
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./sw.js").catch(()=>{});
   }
