@@ -1,80 +1,360 @@
 <!doctype html>
 <html lang="tr">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Şantiye Hatalı İmalat</title>
-<style>
-body{font-family:system-ui;background:#111;color:#eee;margin:0}
-.wrap{max-width:700px;margin:auto;padding:16px}
-label{display:block;margin-top:12px;color:#aaa}
-input,select,textarea,button{width:100%;padding:12px;margin-top:6px;background:#1b1b1b;color:#fff;border:1px solid #333;border-radius:8px}
-button{margin-top:14px;background:#2b7cff;border:none}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Şantiye Hatalı İmalat (Offline)</title>
+  <meta name="theme-color" content="#111111">
+  <link rel="manifest" href="manifest.json">
+  <style>
+    :root{color-scheme:dark}
+    body{font-family:system-ui,Segoe UI,Arial;margin:0;background:#111;color:#eee}
+    .wrap{max-width:760px;margin:0 auto;padding:16px}
+    h1{font-size:18px;margin:8px 0 16px}
+    label{display:block;margin:12px 0 6px;color:#bbb;font-size:13px}
+    select,input,textarea,button{width:100%;padding:12px;border-radius:10px;border:1px solid #333;background:#1b1b1b;color:#eee;box-sizing:border-box}
+    textarea{min-height:90px;resize:vertical}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .card{border:1px solid #222;background:#151515;border-radius:14px;padding:14px;margin:12px 0}
+    .muted{color:#9aa0a6;font-size:13px}
+    .ok{color:#7CFC98}
+    .warn{color:#ffd37a}
+    .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    button{cursor:pointer}
+    button.primary{background:#2b7cff;border-color:#2b7cff}
+    button.good{background:#1f8b4c;border-color:#1f8b4c}
+    button.ghost{background:transparent}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    img{max-width:100%;border-radius:12px;border:1px solid #222;margin-top:10px}
+    .pill{display:inline-block;padding:4px 10px;border:1px solid #333;border-radius:999px;font-size:12px;margin-left:8px}
+    .small{font-size:12px}
+  </style>
 </head>
 <body>
 <div class="wrap">
-<h2>Hatalı İmalat (Offline)</h2>
+  <h1>Hatalı İmalat Takip <span class="pill">Offline</span></h1>
 
-<label>Ada</label>
-<select id="ada"><option>1.ADA</option><option>2.ADA</option></select>
+  <div class="card">
+    <div class="muted" id="net">Bağlantı: kontrol ediliyor…</div>
 
-<label>Blok</label>
-<input id="blok">
+    <label>Ada</label>
+    <select id="ada">
+      <option value="">Seçiniz</option>
+      <option>1.ADA</option><option>2.ADA</option><option>3.ADA</option>
+      <option>4.ADA</option><option>5.ADA</option><option>6.ADA</option>
+    </select>
 
-<label>Kat</label>
-<select id="kat"><option>1.KAT</option><option>2.KAT</option></select>
+    <label>Tip / Blok Grubu</label>
+    <select id="tip">
+      <option value="">Seçiniz</option>
+      <option>A BLOKLAR</option>
+      <option>A-B BLOK</option>
+      <option>C BLOK</option>
+      <option>D BLOK</option>
+      <option>C-D BLOK</option>
+    </select>
 
-<label>İmalat</label>
-<select id="imalat"><option>DUVAR</option><option>BOYA</option></select>
+    <label>Blok</label>
+    <input id="blok" placeholder="Örn: A-02 veya D-11" />
 
-<label>Açıklama</label>
-<textarea id="aciklama"></textarea>
+    <div class="row">
+      <div>
+        <label>Kat</label>
+        <select id="kat">
+          <option value="">Seçiniz</option>
+          <option>1.KAT</option><option>2.KAT</option><option>3.KAT</option>
+          <option>4.KAT</option><option>5.KAT</option><option>6.KAT</option>
+        </select>
+      </div>
+      <div>
+        <label>İmalat</label>
+        <select id="imalat">
+          <option value="">Seçiniz</option>
+          <option>DUVAR</option><option>SIVA</option><option>BOYA</option><option>ŞAP</option>
+          <option>SERAMİK</option><option>PARKE DÖŞEME</option><option>ASMA TAVAN</option>
+          <option>PVC DOĞRAMA</option><option>CAM</option><option>MOBİLYE</option><option>VİTRİFİYE</option>
+        </select>
+      </div>
+    </div>
 
-<label>Foto</label>
-<input type="file" id="foto" accept="image/*" capture>
+    <label>Hata Açıklaması</label>
+    <textarea id="aciklama" placeholder="Kısa ve net açıklama..."></textarea>
 
-<button onclick="kaydet()">Kaydet (Offline)</button>
-<button onclick="gonder()">Gönder</button>
+    <label>Fotoğraf (zorunlu) — otomatik küçültülür</label>
+    <input id="foto" type="file" accept="image/*" capture="environment" />
+    <img id="preview" style="display:none" alt="Önizleme">
+    <div class="muted small" id="psize" style="margin-top:6px"></div>
 
-<p id="durum"></p>
+    <div class="btns">
+      <button class="good" id="save">Kaydet (Offline)</button>
+      <button class="primary" id="sync">Gönder / Senkronize</button>
+      <button class="ghost" id="clear">Temizle</button>
+    </div>
+
+    <div class="muted" style="margin-top:10px">
+      Kuyruk: <span id="qcount">0</span> kayıt
+      <span id="last" style="margin-left:10px"></span>
+    </div>
+
+    <div class="muted small" style="margin-top:8px">
+      <b>SÜRÜM: v5</b> (IndexedDB offline + fetch(no-cors) gönderim)
+    </div>
+  </div>
+
+  <div class="card">
+    <b>Kayıtlar (Cihazda)</b>
+    <div class="muted">İnternet yokken birikir. İnternet gelince “Gönder” ile aktarılır.</div>
+    <div id="list" style="margin-top:10px"></div>
+  </div>
 </div>
 
 <script>
-const URL = "https://script.google.com/macros/s/AKfycbycdbgff4_pGzZ6bYb2VUqTQnaW_mY9k5IcHy_QPFzHi9S0lfUpB63aCiPQzDibbpt6/exec";
+  // ✅ Apps Script Web App URL
+  const ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbycdbgff4_pGzZ6bYb2VUqTQnaW_mY9k5IcHy_QPFzHi9S0lfUpB63aCiPQzDibbpt6/exec";
+  const API_KEY = "12345";
 
-function kaydet(){
-  const f = document.getElementById("foto").files[0];
-  const r = new FileReader();
-  r.onload = ()=>{
-    localStorage.setItem("k", JSON.stringify({
-      ada:ada.value, blok:blok.value, kat:kat.value,
-      imalat:imalat.value, aciklama:aciklama.value,
-      photo:r.result
-    }));
-    durum.innerText="Offline kaydedildi";
-  };
-  r.readAsDataURL(f);
-}
+  const $ = (id) => document.getElementById(id);
+  const netEl = $("net"), qEl = $("qcount"), lastEl = $("last"), listEl = $("list");
+  const preview = $("preview"), psize = $("psize");
 
-function gonder(){
-  const d = JSON.parse(localStorage.getItem("k"));
-  if(!d){durum.innerText="Kayıt yok";return;}
+  function setNet() {
+    const ok = navigator.onLine;
+    netEl.textContent = "Bağlantı: " + (ok ? "ONLINE" : "OFFLINE");
+    netEl.className = ok ? "muted ok" : "muted warn";
+  }
+  window.addEventListener("online", setNet);
+  window.addEventListener("offline", setNet);
+  setNet();
 
-  const form = document.createElement("form");
-  form.method="POST";
-  form.action=URL;
-  form.target="_blank";
+  // ---------- IndexedDB (offline kuyruk) ----------
+  const DB_NAME = "santiye_db_v1";
+  const STORE = "kuyruk";
 
-  const i=document.createElement("input");
-  i.name="payload";
-  i.value=JSON.stringify(d);
-  form.appendChild(i);
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE)) {
+          const os = db.createObjectStore(STORE, { keyPath: "id" });
+          os.createIndex("sent", "sent", { unique:false });
+          os.createIndex("createdAt", "createdAt", { unique:false });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
 
-  document.body.appendChild(form);
-  form.submit();
-  durum.innerText="Gönderildi. Sheet/Drive kontrol et.";
-}
+  async function dbPut(item) {
+    const db = await openDB();
+    return new Promise((res, rej) => {
+      const tx = db.transaction(STORE, "readwrite");
+      tx.objectStore(STORE).put(item);
+      tx.oncomplete = () => res(true);
+      tx.onerror = () => rej(tx.error);
+    });
+  }
+
+  async function dbGetAll() {
+    const db = await openDB();
+    return new Promise((res, rej) => {
+      const tx = db.transaction(STORE, "readonly");
+      const req = tx.objectStore(STORE).getAll();
+      req.onsuccess = () => res(req.result || []);
+      req.onerror = () => rej(req.error);
+    });
+  }
+
+  async function dbMarkSent(id) {
+    const db = await openDB();
+    return new Promise((res, rej) => {
+      const tx = db.transaction(STORE, "readwrite");
+      const os = tx.objectStore(STORE);
+      const r = os.get(id);
+      r.onsuccess = () => {
+        const item = r.result;
+        if (!item) return res(false);
+        item.sent = true;
+        os.put(item);
+      };
+      tx.oncomplete = () => res(true);
+      tx.onerror = () => rej(tx.error);
+    });
+  }
+
+  // ---------- Foto sıkıştırma ----------
+  async function compressImage(file, maxSize=1600, quality=0.75) {
+    const img = await new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = rej;
+      i.src = URL.createObjectURL(file);
+    });
+
+    const w = img.width, h = img.height;
+    const scale = Math.min(1, maxSize / Math.max(w, h));
+    const nw = Math.round(w * scale);
+    const nh = Math.round(h * scale);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = nw; canvas.height = nh;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, nw, nh);
+
+    const dataUrl = canvas.toDataURL("image/jpeg", quality);
+    URL.revokeObjectURL(img.src);
+    return dataUrl;
+  }
+
+  let PHOTO_DATA_URL = "";
+
+  $("foto").addEventListener("change", async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    PHOTO_DATA_URL = await compressImage(f, 1600, 0.75);
+    preview.src = PHOTO_DATA_URL;
+    preview.style.display = "block";
+    const approxBytes = Math.round((PHOTO_DATA_URL.length * 3) / 4);
+    psize.textContent = `Sıkıştırılmış foto yaklaşık: ${Math.round(approxBytes/1024)} KB`;
+  });
+
+  function clearForm() {
+    $("ada").value = "";
+    $("tip").value = "";
+    $("blok").value = "";
+    $("kat").value = "";
+    $("imalat").value = "";
+    $("aciklama").value = "";
+    $("foto").value = "";
+    preview.style.display = "none";
+    preview.src = "";
+    psize.textContent = "";
+    PHOTO_DATA_URL = "";
+  }
+
+  function validate() {
+    const ada = $("ada").value.trim();
+    const tip = $("tip").value.trim();
+    const blok = $("blok").value.trim();
+    const kat = $("kat").value.trim();
+    const imalat = $("imalat").value.trim();
+    const aciklama = $("aciklama").value.trim();
+    if (!ada || !tip || !blok || !kat || !imalat) return { ok:false, msg:"Ada/Tip/Blok/Kat/İmalat zorunlu." };
+    if (!aciklama) return { ok:false, msg:"Hata açıklaması zorunlu." };
+    if (!PHOTO_DATA_URL) return { ok:false, msg:"Fotoğraf zorunlu." };
+    return { ok:true };
+  }
+
+  $("save").addEventListener("click", async () => {
+    const v = validate();
+    if (!v.ok) return alert(v.msg);
+
+    const item = {
+      id: (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + "_" + Math.random(),
+      createdAt: new Date().toISOString(),
+      ada: $("ada").value.trim(),
+      tip: $("tip").value.trim(),
+      blok: $("blok").value.trim(),
+      kat: $("kat").value.trim(),
+      imalat: $("imalat").value.trim(),
+      aciklama: $("aciklama").value.trim(),
+      photoDataUrl: PHOTO_DATA_URL,
+      apiKey: API_KEY,
+      sent: false
+    };
+
+    await dbPut(item);
+    lastEl.textContent = "• Kaydedildi (offline)";
+    clearForm();
+    await refreshList();
+  });
+
+  // ✅ CORS’suz gönderim: fetch + no-cors + form-encoded
+  async function postNoCors(item) {
+    const payload = { ...item };
+    const body = new URLSearchParams({ payload: JSON.stringify(payload) });
+
+    // no-cors -> cevap okuyamayız ama ağ hatası yoksa "gönderildi" sayarız
+    await fetch(ENDPOINT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+      body
+    });
+  }
+
+  $("sync").addEventListener("click", async () => {
+    if (!navigator.onLine) return alert("İnternet yok. Online olunca tekrar deneyin.");
+
+    $("sync").disabled = true;
+    try {
+      const all = await dbGetAll();
+      const pending = all.filter(x => !x.sent);
+      if (pending.length === 0) {
+        alert("Gönderilecek kayıt yok.");
+        return;
+      }
+
+      let sentCount = 0;
+      for (const item of pending) {
+        await postNoCors(item);
+        await dbMarkSent(item.id);
+        sentCount++;
+        await refreshList();
+      }
+
+      lastEl.textContent = `• ${sentCount} kayıt gönderildi ✔️ (Sheet/Drive’dan kontrol et)`;
+      alert("Gönderildi ✅ Google Sheet (KAYITLAR) ve Drive klasöründen kontrol et.");
+    } catch (e) {
+      alert("Gönderim durdu: " + (e?.message || e));
+    } finally {
+      $("sync").disabled = false;
+    }
+  });
+
+  $("clear").addEventListener("click", clearForm);
+
+  function escapeHtml(s){
+    return String(s)
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#039;");
+  }
+
+  async function refreshList() {
+    const q = await dbGetAll();
+    q.sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||""));
+
+    qEl.textContent = q.length;
+
+    listEl.innerHTML = "";
+    if (!q.length) {
+      listEl.innerHTML = `<div class="muted">Henüz kayıt yok.</div>`;
+      return;
+    }
+
+    for (const item of q) {
+      const div = document.createElement("div");
+      div.className = "card";
+      div.style.margin = "10px 0";
+      div.innerHTML = `
+        <div><b>${item.ada}</b> • ${item.tip} • <b>${item.blok}</b> • ${item.kat} • ${item.imalat}</div>
+        <div class="muted">${new Date(item.createdAt).toLocaleString("tr-TR")} • Durum: ${item.sent ? "Gönderildi" : "Bekliyor"}</div>
+        <div style="margin-top:8px">${escapeHtml(item.aciklama)}</div>
+      `;
+      listEl.appendChild(div);
+    }
+  }
+
+  refreshList();
+
+  // PWA cache
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("./sw.js").catch(()=>{});
+  }
 </script>
 </body>
 </html>
