@@ -28,7 +28,6 @@
     img{max-width:100%;border-radius:12px;border:1px solid #222;margin-top:10px}
     .pill{display:inline-block;padding:4px 10px;border:1px solid #333;border-radius:999px;font-size:12px;margin-left:8px}
     .small{font-size:12px}
-    .hint{color:#8a8f98;font-size:12px;margin-top:6px}
   </style>
 </head>
 <body>
@@ -70,7 +69,7 @@
     <div class="btns">
       <button class="good" id="save">Kaydet (Offline)</button>
       <button class="primary" id="sync">Gönder / Senkronize</button>
-      <button class="ghost" id="clear">Temizle</button>
+      <button class="ghost" id="clearAll">Tümünü Sıfırla</button>
     </div>
 
     <div class="muted" style="margin-top:10px">
@@ -79,7 +78,7 @@
     </div>
 
     <div class="muted small" style="margin-top:8px">
-      <b>SÜRÜM: v6</b> (Dinamik ADA→TİP→BLOK + IndexedDB offline + no-cors sync)
+      <b>SÜRÜM: v7</b> (Kaydet/Gönder sonrası seçimler korunur)
     </div>
   </div>
 
@@ -91,22 +90,11 @@
 </div>
 
 <script>
-  // =======================
-  // 0) AYARLAR
-  // =======================
+  // ===== Ayarlar =====
   const ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbycdbgff4_pGzZ6bYb2VUqTQnaW_mY9k5IcHy_QPFzHi9S0lfUpB63aCiPQzDibbpt6/exec";
   const API_KEY = "12345";
 
-  // =======================
-  // 1) VERİ: ADA → TİP → BLOKLAR
-  // =======================
-  // Buradaki örnekleri kendi Excel’inden kopyalayıp aynen yerleştir.
-  // Yapı şu:
-  // "1.ADA": {
-  //   "A BLOKLAR": ["A-01","A-02"],
-  //   "A-B BLOK": ["A-01/B-01","A-04/B-02"],
-  //   ...
-  // }
+  // ===== Veri: ADA → TİP → BLOK =====
   const BLOK_DATA = {
     "1.ADA": {
       "A BLOKLAR": ["A-02","A-03"],
@@ -152,18 +140,14 @@
     }
   };
 
-  // =======================
-  // 2) SABİT LİSTELER
-  // =======================
   const KATLAR = ["1.KAT","2.KAT","3.KAT","4.KAT","5.KAT","6.KAT"];
   const IMALATLAR = ["DUVAR","SIVA","BOYA","ŞAP","SERAMİK","PARKE DÖŞEME","ASMA TAVAN","PVC DOĞRAMA","CAM","MOBİLYE","VİTRİFİYE"];
 
-  // =======================
-  // 3) UI yardımcıları
-  // =======================
+  // ===== UI =====
   const $ = (id) => document.getElementById(id);
   const netEl = $("net"), qEl = $("qcount"), lastEl = $("last"), listEl = $("list");
   const preview = $("preview"), psize = $("psize");
+  const adaEl = $("ada"), tipEl = $("tip"), blokEl = $("blok"), blokTextEl = $("blok_text");
 
   function setNet() {
     const ok = navigator.onLine;
@@ -180,7 +164,6 @@
     opt0.value = "";
     opt0.textContent = placeholder;
     selectEl.appendChild(opt0);
-
     for (const it of items) {
       const opt = document.createElement("option");
       opt.value = it;
@@ -189,67 +172,76 @@
     }
   }
 
-  // =======================
-  // 4) DİNAMİK AÇILIR LİSTELER
-  // =======================
-  const adaEl = $("ada");
-  const tipEl = $("tip");
-  const blokEl = $("blok");
-  const blokTextEl = $("blok_text");
+  // ===== Seçimleri sakla (hızlı giriş için) =====
+  const PREF_KEY = "santiye_pref_v1";
+  function savePrefs() {
+    const prefs = {
+      ada: adaEl.value,
+      tip: tipEl.value,
+      blok: blokEl.value,
+      blok_text: blokTextEl.value,
+      kat: $("kat").value,
+      imalat: $("imalat").value
+    };
+    localStorage.setItem(PREF_KEY, JSON.stringify(prefs));
+  }
+  function loadPrefs() {
+    try { return JSON.parse(localStorage.getItem(PREF_KEY) || "{}"); } catch { return {}; }
+  }
 
+  // ===== Dinamik dropdown =====
   function initDropdowns() {
     const adalar = Object.keys(BLOK_DATA);
     setOptions(adaEl, adalar, "Ada seçiniz");
     setOptions($("kat"), KATLAR, "Kat seçiniz");
     setOptions($("imalat"), IMALATLAR, "İmalat seçiniz");
-
+    setOptions(tipEl, [], "Önce ada seçiniz");
+    setOptions(blokEl, [], "Önce tip seçiniz");
     tipEl.disabled = true;
     blokEl.disabled = true;
 
     adaEl.addEventListener("change", () => {
-      blokTextEl.style.display = "none";
-      blokTextEl.value = "";
-      blokEl.value = "";
-      tipEl.value = "";
-
       const ada = adaEl.value;
       if (!ada) {
-        tipEl.disabled = true;
-        blokEl.disabled = true;
         setOptions(tipEl, [], "Önce ada seçiniz");
         setOptions(blokEl, [], "Önce tip seçiniz");
+        tipEl.disabled = true;
+        blokEl.disabled = true;
+        blokTextEl.style.display = "none";
+        blokTextEl.value = "";
+        savePrefs();
         return;
       }
-
       const tips = Object.keys(BLOK_DATA[ada] || {});
       setOptions(tipEl, tips, "Tip seçiniz");
       tipEl.disabled = false;
 
       setOptions(blokEl, [], "Önce tip seçiniz");
       blokEl.disabled = true;
+      blokTextEl.style.display = "none";
+      blokTextEl.value = "";
+      savePrefs();
     });
 
     tipEl.addEventListener("change", () => {
-      blokTextEl.style.display = "none";
-      blokTextEl.value = "";
-
       const ada = adaEl.value;
       const tip = tipEl.value;
       if (!ada || !tip) {
         setOptions(blokEl, [], "Önce tip seçiniz");
         blokEl.disabled = true;
+        blokTextEl.style.display = "none";
+        blokTextEl.value = "";
+        savePrefs();
         return;
       }
-
       const blocks = (BLOK_DATA[ada] && BLOK_DATA[ada][tip]) ? BLOK_DATA[ada][tip] : [];
-      const list = [...blocks];
-      list.sort((a,b)=>a.localeCompare(b, "tr"));
-
-      // “Diğer” opsiyonu (listede yoksa yazabilsin)
+      const list = [...blocks].sort((a,b)=>a.localeCompare(b,"tr"));
       list.push("Diğer (Yaz)");
-
       setOptions(blokEl, list, "Blok seçiniz");
       blokEl.disabled = false;
+      blokTextEl.style.display = "none";
+      blokTextEl.value = "";
+      savePrefs();
     });
 
     blokEl.addEventListener("change", () => {
@@ -260,17 +252,48 @@
         blokTextEl.style.display = "none";
         blokTextEl.value = "";
       }
+      savePrefs();
     });
 
-    // ilk durum
-    setOptions(tipEl, [], "Önce ada seçiniz");
-    setOptions(blokEl, [], "Önce tip seçiniz");
+    $("kat").addEventListener("change", savePrefs);
+    $("imalat").addEventListener("change", savePrefs);
+    blokTextEl.addEventListener("input", savePrefs);
+
+    // Açılışta eski seçimleri geri yükle
+    restorePrefs();
   }
 
-  // =======================
-  // 5) OFFLINE KUYRUK (IndexedDB)
-  // =======================
-  const DB_NAME = "santiye_db_v6";
+  function restorePrefs() {
+    const p = loadPrefs();
+    if (!p.ada) return;
+
+    // ADA set
+    adaEl.value = p.ada;
+    adaEl.dispatchEvent(new Event("change"));
+
+    // TİP set
+    if (p.tip) {
+      tipEl.value = p.tip;
+      tipEl.dispatchEvent(new Event("change"));
+    }
+
+    // BLOK set
+    if (p.blok) {
+      blokEl.value = p.blok;
+      blokEl.dispatchEvent(new Event("change"));
+    }
+    if (p.blok === "Diğer (Yaz)") {
+      blokTextEl.value = p.blok_text || "";
+      blokTextEl.style.display = "block";
+    }
+
+    // KAT/İMALAT
+    $("kat").value = p.kat || "";
+    $("imalat").value = p.imalat || "";
+  }
+
+  // ===== IndexedDB (kuyruk) =====
+  const DB_NAME = "santiye_db_v7";
   const STORE = "kuyruk";
 
   function openDB() {
@@ -326,9 +349,7 @@
     });
   }
 
-  // =======================
-  // 6) FOTO SIKIŞTIRMA
-  // =======================
+  // ===== Foto sıkıştırma =====
   async function compressImage(file, maxSize=1600, quality=0.75) {
     const img = await new Promise((res, rej) => {
       const i = new Image();
@@ -336,24 +357,20 @@
       i.onerror = rej;
       i.src = URL.createObjectURL(file);
     });
-
     const w = img.width, h = img.height;
     const scale = Math.min(1, maxSize / Math.max(w, h));
     const nw = Math.round(w * scale);
     const nh = Math.round(h * scale);
-
     const canvas = document.createElement("canvas");
     canvas.width = nw; canvas.height = nh;
     const ctx = canvas.getContext("2d");
     ctx.drawImage(img, 0, 0, nw, nh);
-
     const dataUrl = canvas.toDataURL("image/jpeg", quality);
     URL.revokeObjectURL(img.src);
     return dataUrl;
   }
 
   let PHOTO_DATA_URL = "";
-
   $("foto").addEventListener("change", async (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -364,32 +381,8 @@
     psize.textContent = `Sıkıştırılmış foto yaklaşık: ${Math.round(approxBytes/1024)} KB`;
   });
 
-  function clearForm() {
-    adaEl.value = "";
-    tipEl.value = "";
-    blokEl.value = "";
-    $("kat").value = "";
-    $("imalat").value = "";
-    $("aciklama").value = "";
-    $("foto").value = "";
-    preview.style.display = "none";
-    preview.src = "";
-    psize.textContent = "";
-    PHOTO_DATA_URL = "";
-
-    tipEl.disabled = true;
-    blokEl.disabled = true;
-    blokTextEl.style.display = "none";
-    blokTextEl.value = "";
-
-    setOptions(tipEl, [], "Önce ada seçiniz");
-    setOptions(blokEl, [], "Önce tip seçiniz");
-  }
-
   function getSelectedBlok() {
-    if (blokEl.value === "Diğer (Yaz)") {
-      return (blokTextEl.value || "").trim();
-    }
+    if (blokEl.value === "Diğer (Yaz)") return (blokTextEl.value || "").trim();
     return (blokEl.value || "").trim();
   }
 
@@ -400,16 +393,24 @@
     const kat = ($("kat").value || "").trim();
     const imalat = ($("imalat").value || "").trim();
     const aciklama = ($("aciklama").value || "").trim();
-
     if (!ada || !tip || !blok || !kat || !imalat) return { ok:false, msg:"Ada/Tip/Blok/Kat/İmalat zorunlu." };
     if (!aciklama) return { ok:false, msg:"Hata açıklaması zorunlu." };
     if (!PHOTO_DATA_URL) return { ok:false, msg:"Fotoğraf zorunlu." };
     return { ok:true };
   }
 
-  // =======================
-  // 7) KAYDET (OFFLINE)
-  // =======================
+  // ===== Seçimler kalsın: sadece açıklama + foto temizle =====
+  function clearAfterSaveOrSend() {
+    $("aciklama").value = "";
+    $("foto").value = "";
+    preview.style.display = "none";
+    preview.src = "";
+    psize.textContent = "";
+    PHOTO_DATA_URL = "";
+    // Seçimleri aynen bırakıyoruz ✅
+  }
+
+  // ===== Kaydet (offline) =====
   $("save").addEventListener("click", async () => {
     const v = validate();
     if (!v.ok) return alert(v.msg);
@@ -429,14 +430,13 @@
     };
 
     await dbPut(item);
+    savePrefs(); // seçimleri kaydet
     lastEl.textContent = "• Kaydedildi (offline)";
-    clearForm();
+    clearAfterSaveOrSend();
     await refreshList();
   });
 
-  // =======================
-  // 8) SENKRON (ONLINE) – no-cors POST
-  // =======================
+  // ===== Senkron (online) =====
   async function postNoCors(item) {
     const body = new URLSearchParams({ payload: JSON.stringify(item) });
     await fetch(ENDPOINT_URL, {
@@ -467,7 +467,9 @@
         await refreshList();
       }
 
+      savePrefs(); // seçimleri kaydet
       lastEl.textContent = `• ${sentCount} kayıt gönderildi ✔️ (Sheet/Drive’dan kontrol et)`;
+      clearAfterSaveOrSend(); // sadece açıklama+foto sıfırla
       alert("Gönderildi ✅ Google Sheet (KAYITLAR) ve Drive klasöründen kontrol et.");
     } catch (e) {
       alert("Gönderim durdu: " + (e?.message || e));
@@ -476,7 +478,11 @@
     }
   });
 
-  $("clear").addEventListener("click", clearForm);
+  // ===== Tümü sıfırla (istersen) =====
+  $("clearAll").addEventListener("click", () => {
+    localStorage.removeItem(PREF_KEY);
+    location.reload();
+  });
 
   function escapeHtml(s){
     return String(s)
@@ -490,7 +496,6 @@
   async function refreshList() {
     const q = await dbGetAll();
     q.sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||""));
-
     qEl.textContent = q.length;
 
     listEl.innerHTML = "";
@@ -512,9 +517,7 @@
     }
   }
 
-  // =======================
-  // 9) BAŞLAT
-  // =======================
+  // ===== Başlat =====
   initDropdowns();
   refreshList();
 
