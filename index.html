@@ -133,7 +133,6 @@
 </div>
 
 <!-- hidden iframe for verified sync -->
-<iframe name="sink" id="sink"></iframe>
 
 <script>
   // =======================
@@ -555,34 +554,43 @@
   });
 
   function sendViaForm(item) {
-    return new Promise((resolve, reject) => {
-      // timeout
-      const t = setTimeout(() => {
-        pendingResolvers.delete(item.id);
-        reject(new Error("Zaman aşımı (sunucu yanıt vermedi)."));
-      }, 20000);
+  return new Promise((resolve, reject) => {
+    // Kullanıcı tıkladığı için popup açmaya izin verir
+    const w = window.open("about:blank", "sinkwin", "width=420,height=520");
+    if (!w) {
+      return reject(new Error("Popup engellendi. Tarayıcıda açılır pencereye izin ver."));
+    }
 
-      pendingResolvers.set(item.id, (data) => {
-        clearTimeout(t);
-        resolve(data);
-      });
+    // timeout (20 sn az gelebiliyor, 40 yaptım)
+    const t = setTimeout(() => {
+      pendingResolvers.delete(item.id);
+      try { w.close(); } catch {}
+      reject(new Error("Zaman aşımı (sunucu yanıt vermedi)."));
+    }, 40000);
 
-      const form = document.createElement("form");
-      form.method = "POST";
-      form.action = ENDPOINT_URL;
-      form.target = "sink";
-
-      const inp = document.createElement("input");
-      inp.type = "hidden";
-      inp.name = "payload";
-      inp.value = JSON.stringify(item);
-
-      form.appendChild(inp);
-      document.body.appendChild(form);
-      form.submit();
-      form.remove();
+    pendingResolvers.set(item.id, (data) => {
+      clearTimeout(t);
+      try { w.close(); } catch {}
+      resolve(data);
     });
-  }
+
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = ENDPOINT_URL;
+    form.target = "sinkwin";
+
+    const inp = document.createElement("input");
+    inp.type = "hidden";
+    inp.name = "payload";
+    inp.value = JSON.stringify(item);
+
+    form.appendChild(inp);
+    document.body.appendChild(form);
+    form.submit();
+    form.remove();
+  });
+}
+
 
   $("sync").addEventListener("click", async () => {
     if (!navigator.onLine) return alert("İnternet yok. Online olunca tekrar deneyin.");
