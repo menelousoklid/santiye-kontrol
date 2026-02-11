@@ -28,15 +28,58 @@
     img{max-width:100%;border-radius:12px;border:1px solid #222;margin-top:10px}
     .pill{display:inline-block;padding:4px 10px;border:1px solid #333;border-radius:999px;font-size:12px;margin-left:8px}
     .small{font-size:12px}
+    .topbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, monospace; background:#0f0f0f;border:1px solid #2a2a2a;border-radius:10px;padding:8px 10px;display:inline-block}
+    .overlay{
+      position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:14px
+    }
+    .modal{
+      width:min(520px, 100%); background:#151515;border:1px solid #2a2a2a;border-radius:14px;padding:14px
+    }
+    .modal h2{margin:6px 0 10px;font-size:16px}
+    .modal .muted{line-height:1.35}
+    iframe{display:none}
   </style>
 </head>
 <body>
+
+<!-- PIN OVERLAY -->
+<div class="overlay" id="pinOverlay" style="display:none">
+  <div class="modal">
+    <h2>Giriş (PIN)</h2>
+    <div class="muted">Bu uygulama PIN ile korunur. Offline kullanabilmen için PIN kontrolü cihaz üzerinde yapılır.</div>
+    <label>PIN</label>
+    <input id="pinInput" inputmode="numeric" placeholder="****" />
+    <div class="btns">
+      <button class="primary" id="pinBtn">Giriş</button>
+      <button class="ghost" id="pinHelp">Cihaz Kodu</button>
+    </div>
+    <div class="muted small" id="pinMsg" style="margin-top:8px"></div>
+    <div class="muted small" style="margin-top:10px">
+      <b>Not:</b> Yetkisiz cihazlar senkronizasyon yapsa bile kayıtlar Sheet’e yazdırılmaz.
+    </div>
+  </div>
+</div>
+
 <div class="wrap">
-  <h1>Hatalı İmalat Takip <span class="pill">Offline</span></h1>
+  <div class="topbar">
+    <h1 style="margin:0">Hatalı İmalat Takip <span class="pill">Offline</span></h1>
+  </div>
 
   <div class="card">
     <div class="muted" id="net">Bağlantı: kontrol ediliyor…</div>
 
+    <div class="muted" style="margin-top:10px">
+      <div><b>Cihaz Kodu (deviceId):</b> <span class="kbd" id="deviceIdText"></span></div>
+      <div class="btns" style="margin-top:8px">
+        <button class="ghost" id="copyDevice">Kopyala</button>
+        <button class="ghost" id="showPin">PIN ekranı</button>
+      </div>
+      <div class="muted small">Bu kodu yetkilendirme için yöneticine gönder. (Sheet: YETKILI_CIHAZLAR)</div>
+    </div>
+  </div>
+
+  <div class="card">
     <label>Ada</label>
     <select id="ada"></select>
 
@@ -78,7 +121,7 @@
     </div>
 
     <div class="muted small" style="margin-top:8px">
-      <b>SÜRÜM: v7</b> (Kaydet/Gönder sonrası seçimler korunur)
+      <b>SÜRÜM: v8</b> (PIN + device whitelist + doğrulanabilir sync)
     </div>
   </div>
 
@@ -89,61 +132,37 @@
   </div>
 </div>
 
+<!-- hidden iframe for verified sync -->
+<iframe name="sink" id="sink"></iframe>
+
 <script>
-  // ===== Ayarlar =====
+  // =======================
+  // 0) AYARLAR
+  // =======================
   const ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbycdbgff4_pGzZ6bYb2VUqTQnaW_mY9k5IcHy_QPFzHi9S0lfUpB63aCiPQzDibbpt6/exec";
-  const API_KEY = "12345";
 
-  // ===== Veri: ADA → TİP → BLOK =====
+  // Varsayılan PIN: 2580
+  // Güvenlik: PIN'i HTML içinde düz metin tutmuyoruz; hash kontrolü yapıyoruz.
+  // Bu hash Apps Script’teki PIN_HASH ile aynı olmalı.
+  const PIN_HASH = "d6b1f60c5b6135d7c58a1cc0d3c5f5b0a8f6a35a6f3b2c8f7f02d4b11d34c1cb";
+
+  // =======================
+  // 1) BLOK VERİSİ (dinamik)
+  // =======================
   const BLOK_DATA = {
-    "1.ADA": {
-      "A BLOKLAR": ["A-02","A-03"],
-      "A-B BLOK": ["A-01/B-01","A-04/B-02","A-05/B-03"],
-      "C BLOK": ["C-01","C-02","C-03","C-04","C-05","C-06","C-07"],
-      "D BLOK": ["D-01","D-02","D-03","D-04","D-05","D-06"],
-      "C-D BLOK": []
-    },
-    "2.ADA": {
-      "A BLOKLAR": ["A-06","A-07","A-09","A-10","A-11","A-13"],
-      "A-B BLOK": ["A-08/B-04","A-12/B-05"],
-      "C BLOK": ["C-10"],
-      "D BLOK": ["D-07","D-08","D-11","D-12","D-13","D-14"],
-      "C-D BLOK": ["C-08/D-09","C-09/D-10"]
-    },
-    "3.ADA": {
-      "A BLOKLAR": ["A-14","A-16","A-17"],
-      "A-B BLOK": ["A-15/B-06"],
-      "C BLOK": ["C-11","C-12","C-13"],
-      "D BLOK": ["D-15","D-16","D-17"],
-      "C-D BLOK": []
-    },
-    "4.ADA": {
-      "A BLOKLAR": ["A-18"],
-      "A-B BLOK": [],
-      "C BLOK": ["C-14","C-15","C-16"],
-      "D BLOK": ["D-18","D-19"],
-      "C-D BLOK": []
-    },
-    "5.ADA": {
-      "A BLOKLAR": ["A-19","A-20"],
-      "A-B BLOK": [],
-      "C BLOK": ["C-18","C-19"],
-      "D BLOK": [],
-      "C-D BLOK": ["C-17/D-20","C-20/D-21"]
-    },
-    "6.ADA": {
-      "A BLOKLAR": [],
-      "A-B BLOK": ["A-21/B-07"],
-      "C BLOK": ["C-23"],
-      "D BLOK": ["D-22"],
-      "C-D BLOK": ["C-21/D-24"]
-    }
+    "1.ADA": {"A BLOKLAR":["A-02","A-03"],"A-B BLOK":["A-01/B-01","A-04/B-02","A-05/B-03"],"C BLOK":["C-01","C-02","C-03","C-04","C-05","C-06","C-07"],"D BLOK":["D-01","D-02","D-03","D-04","D-05","D-06"],"C-D BLOK":[]},
+    "2.ADA": {"A BLOKLAR":["A-06","A-07","A-09","A-10","A-11","A-13"],"A-B BLOK":["A-08/B-04","A-12/B-05"],"C BLOK":["C-10"],"D BLOK":["D-07","D-08","D-11","D-12","D-13","D-14"],"C-D BLOK":["C-08/D-09","C-09/D-10"]},
+    "3.ADA": {"A BLOKLAR":["A-14","A-16","A-17"],"A-B BLOK":["A-15/B-06"],"C BLOK":["C-11","C-12","C-13"],"D BLOK":["D-15","D-16","D-17"],"C-D BLOK":[]},
+    "4.ADA": {"A BLOKLAR":["A-18"],"A-B BLOK":[],"C BLOK":["C-14","C-15","C-16"],"D BLOK":["D-18","D-19"],"C-D BLOK":[]},
+    "5.ADA": {"A BLOKLAR":["A-19","A-20"],"A-B BLOK":[],"C BLOK":["C-18","C-19"],"D BLOK":[],"C-D BLOK":["C-17/D-20","C-20/D-21"]},
+    "6.ADA": {"A BLOKLAR":[],"A-B BLOK":["A-21/B-07"],"C BLOK":["C-23"],"D BLOK":["D-22"],"C-D BLOK":["C-21/D-24"]}
   };
-
   const KATLAR = ["1.KAT","2.KAT","3.KAT","4.KAT","5.KAT","6.KAT"];
   const IMALATLAR = ["DUVAR","SIVA","BOYA","ŞAP","SERAMİK","PARKE DÖŞEME","ASMA TAVAN","PVC DOĞRAMA","CAM","MOBİLYE","VİTRİFİYE"];
 
-  // ===== UI =====
+  // =======================
+  // 2) UI
+  // =======================
   const $ = (id) => document.getElementById(id);
   const netEl = $("net"), qEl = $("qcount"), lastEl = $("last"), listEl = $("list");
   const preview = $("preview"), psize = $("psize");
@@ -172,7 +191,79 @@
     }
   }
 
-  // ===== Seçimleri sakla (hızlı giriş için) =====
+  // =======================
+  // 3) Cihaz Kimliği
+  // =======================
+  const DEVICE_KEY = "santiye_device_id_v1";
+  function getOrCreateDeviceId() {
+    let id = localStorage.getItem(DEVICE_KEY);
+    if (!id) {
+      id = (crypto && crypto.randomUUID) ? crypto.randomUUID() : (String(Date.now()) + "_" + Math.random());
+      localStorage.setItem(DEVICE_KEY, id);
+    }
+    return id;
+  }
+  const DEVICE_ID = getOrCreateDeviceId();
+  $("deviceIdText").textContent = DEVICE_ID;
+
+  $("copyDevice").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(DEVICE_ID);
+      alert("Kopyalandı ✅");
+    } catch {
+      alert("Kopyalanamadı. Elle seçip kopyala: " + DEVICE_ID);
+    }
+  });
+
+  // =======================
+  // 4) PIN Giriş (offline)
+  // =======================
+  const SESSION_PIN_OK = "santiye_pin_ok_v1";
+
+  async function sha256Hex(str) {
+    const data = new TextEncoder().encode(str);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  function showPinOverlay(msg="") {
+    $("pinOverlay").style.display = "flex";
+    $("pinMsg").textContent = msg;
+    $("pinInput").value = "";
+    $("pinInput").focus();
+  }
+  function hidePinOverlay() {
+    $("pinOverlay").style.display = "none";
+  }
+
+  $("showPin").addEventListener("click", () => showPinOverlay(""));
+  $("pinHelp").addEventListener("click", () => alert("Cihaz Kodu (deviceId):\n\n" + DEVICE_ID + "\n\nBu kodu Sheet > YETKILI_CIHAZLAR listesine eklemelisin."));
+
+  $("pinBtn").addEventListener("click", async () => {
+    const pin = $("pinInput").value.trim();
+    if (!pin) return;
+    const hex = await sha256Hex(pin);
+    if (hex !== PIN_HASH) {
+      return $("pinMsg").textContent = "PIN yanlış.";
+    }
+    sessionStorage.setItem(SESSION_PIN_OK, "1");
+    sessionStorage.setItem("santiye_pin_hash_v1", hex);
+    hidePinOverlay();
+  });
+
+  // ilk açılışta pin iste
+  if (sessionStorage.getItem(SESSION_PIN_OK) !== "1") {
+    showPinOverlay("");
+  }
+
+  function getPinHash() {
+    return sessionStorage.getItem("santiye_pin_hash_v1") || "";
+  }
+
+  // =======================
+  // 5) Seçim tercihleri (hızlı giriş)
+  // =======================
   const PREF_KEY = "santiye_pref_v1";
   function savePrefs() {
     const prefs = {
@@ -189,10 +280,11 @@
     try { return JSON.parse(localStorage.getItem(PREF_KEY) || "{}"); } catch { return {}; }
   }
 
-  // ===== Dinamik dropdown =====
+  // =======================
+  // 6) Dinamik açılır listeler
+  // =======================
   function initDropdowns() {
-    const adalar = Object.keys(BLOK_DATA);
-    setOptions(adaEl, adalar, "Ada seçiniz");
+    setOptions(adaEl, Object.keys(BLOK_DATA), "Ada seçiniz");
     setOptions($("kat"), KATLAR, "Kat seçiniz");
     setOptions($("imalat"), IMALATLAR, "İmalat seçiniz");
     setOptions(tipEl, [], "Önce ada seçiniz");
@@ -212,8 +304,8 @@
         savePrefs();
         return;
       }
-      const tips = Object.keys(BLOK_DATA[ada] || {});
-      setOptions(tipEl, tips, "Tip seçiniz");
+
+      setOptions(tipEl, Object.keys(BLOK_DATA[ada] || {}), "Tip seçiniz");
       tipEl.disabled = false;
 
       setOptions(blokEl, [], "Önce tip seçiniz");
@@ -234,11 +326,13 @@
         savePrefs();
         return;
       }
+
       const blocks = (BLOK_DATA[ada] && BLOK_DATA[ada][tip]) ? BLOK_DATA[ada][tip] : [];
       const list = [...blocks].sort((a,b)=>a.localeCompare(b,"tr"));
       list.push("Diğer (Yaz)");
       setOptions(blokEl, list, "Blok seçiniz");
       blokEl.disabled = false;
+
       blokTextEl.style.display = "none";
       blokTextEl.value = "";
       savePrefs();
@@ -259,7 +353,6 @@
     $("imalat").addEventListener("change", savePrefs);
     blokTextEl.addEventListener("input", savePrefs);
 
-    // Açılışta eski seçimleri geri yükle
     restorePrefs();
   }
 
@@ -267,17 +360,14 @@
     const p = loadPrefs();
     if (!p.ada) return;
 
-    // ADA set
     adaEl.value = p.ada;
     adaEl.dispatchEvent(new Event("change"));
 
-    // TİP set
     if (p.tip) {
       tipEl.value = p.tip;
       tipEl.dispatchEvent(new Event("change"));
     }
 
-    // BLOK set
     if (p.blok) {
       blokEl.value = p.blok;
       blokEl.dispatchEvent(new Event("change"));
@@ -287,13 +377,14 @@
       blokTextEl.style.display = "block";
     }
 
-    // KAT/İMALAT
     $("kat").value = p.kat || "";
     $("imalat").value = p.imalat || "";
   }
 
-  // ===== IndexedDB (kuyruk) =====
-  const DB_NAME = "santiye_db_v7";
+  // =======================
+  // 7) Offline kuyruk (IndexedDB)
+  // =======================
+  const DB_NAME = "santiye_db_v8";
   const STORE = "kuyruk";
 
   function openDB() {
@@ -349,7 +440,9 @@
     });
   }
 
-  // ===== Foto sıkıştırma =====
+  // =======================
+  // 8) Foto sıkıştırma
+  // =======================
   async function compressImage(file, maxSize=1600, quality=0.75) {
     const img = await new Promise((res, rej) => {
       const i = new Image();
@@ -387,19 +480,22 @@
   }
 
   function validate() {
+    if (sessionStorage.getItem(SESSION_PIN_OK) !== "1") return { ok:false, msg:"Önce PIN gir." };
+
     const ada = (adaEl.value || "").trim();
     const tip = (tipEl.value || "").trim();
     const blok = getSelectedBlok();
     const kat = ($("kat").value || "").trim();
     const imalat = ($("imalat").value || "").trim();
     const aciklama = ($("aciklama").value || "").trim();
+
     if (!ada || !tip || !blok || !kat || !imalat) return { ok:false, msg:"Ada/Tip/Blok/Kat/İmalat zorunlu." };
     if (!aciklama) return { ok:false, msg:"Hata açıklaması zorunlu." };
     if (!PHOTO_DATA_URL) return { ok:false, msg:"Fotoğraf zorunlu." };
     return { ok:true };
   }
 
-  // ===== Seçimler kalsın: sadece açıklama + foto temizle =====
+  // Kaydet/Gönder sonrası seçimler kalsın
   function clearAfterSaveOrSend() {
     $("aciklama").value = "";
     $("foto").value = "";
@@ -407,10 +503,11 @@
     preview.src = "";
     psize.textContent = "";
     PHOTO_DATA_URL = "";
-    // Seçimleri aynen bırakıyoruz ✅
   }
 
-  // ===== Kaydet (offline) =====
+  // =======================
+  // 9) Kaydet (offline)
+  // =======================
   $("save").addEventListener("click", async () => {
     const v = validate();
     if (!v.ok) return alert(v.msg);
@@ -425,30 +522,71 @@
       imalat: $("imalat").value.trim(),
       aciklama: $("aciklama").value.trim(),
       photoDataUrl: PHOTO_DATA_URL,
-      apiKey: API_KEY,
+      deviceId: DEVICE_ID,
+      pinHash: getPinHash(),
       sent: false
     };
 
     await dbPut(item);
-    savePrefs(); // seçimleri kaydet
+    savePrefs();
     lastEl.textContent = "• Kaydedildi (offline)";
     clearAfterSaveOrSend();
     await refreshList();
   });
 
-  // ===== Senkron (online) =====
-  async function postNoCors(item) {
-    const body = new URLSearchParams({ payload: JSON.stringify(item) });
-    await fetch(ENDPOINT_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-      body
+  // =======================
+  // 10) Doğrulanabilir Sync (form + iframe + postMessage)
+  // =======================
+  const pendingResolvers = new Map();
+
+  window.addEventListener("message", async (event) => {
+    const msg = event.data;
+    if (!msg || msg.type !== "SANTIYE_SYNC") return;
+
+    const data = msg.data || {};
+    const id = data.id;
+    if (!id) return;
+
+    const resolve = pendingResolvers.get(id);
+    if (resolve) {
+      pendingResolvers.delete(id);
+      resolve(data);
+    }
+  });
+
+  function sendViaForm(item) {
+    return new Promise((resolve, reject) => {
+      // timeout
+      const t = setTimeout(() => {
+        pendingResolvers.delete(item.id);
+        reject(new Error("Zaman aşımı (sunucu yanıt vermedi)."));
+      }, 20000);
+
+      pendingResolvers.set(item.id, (data) => {
+        clearTimeout(t);
+        resolve(data);
+      });
+
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = ENDPOINT_URL;
+      form.target = "sink";
+
+      const inp = document.createElement("input");
+      inp.type = "hidden";
+      inp.name = "payload";
+      inp.value = JSON.stringify(item);
+
+      form.appendChild(inp);
+      document.body.appendChild(form);
+      form.submit();
+      form.remove();
     });
   }
 
   $("sync").addEventListener("click", async () => {
     if (!navigator.onLine) return alert("İnternet yok. Online olunca tekrar deneyin.");
+    if (sessionStorage.getItem(SESSION_PIN_OK) !== "1") return showPinOverlay("Senkron için PIN gerekli.");
 
     $("sync").disabled = true;
     try {
@@ -459,18 +597,31 @@
         return;
       }
 
-      let sentCount = 0;
+      let okCount = 0;
       for (const item of pending) {
-        await postNoCors(item);
+        // her seferinde güvenlik alanlarını tazele
+        item.deviceId = DEVICE_ID;
+        item.pinHash = getPinHash();
+
+        const res = await sendViaForm(item);
+
+        if (!res.ok) {
+          alert("Gönderim reddedildi:\n\n" + (res.msg || "Bilinmeyen hata") + "\n\nCihaz Kodu:\n" + DEVICE_ID);
+          // reddedildiyse KESİNLİKLE sent yapmıyoruz
+          break;
+        }
+
         await dbMarkSent(item.id);
-        sentCount++;
+        okCount++;
         await refreshList();
       }
 
-      savePrefs(); // seçimleri kaydet
-      lastEl.textContent = `• ${sentCount} kayıt gönderildi ✔️ (Sheet/Drive’dan kontrol et)`;
-      clearAfterSaveOrSend(); // sadece açıklama+foto sıfırla
-      alert("Gönderildi ✅ Google Sheet (KAYITLAR) ve Drive klasöründen kontrol et.");
+      if (okCount > 0) {
+        savePrefs();
+        lastEl.textContent = `• ${okCount} kayıt gönderildi ✔️`;
+        clearAfterSaveOrSend();
+        alert("Gönderildi ✅ Google Sheet (KAYITLAR) ve Drive klasöründen kontrol et.");
+      }
     } catch (e) {
       alert("Gönderim durdu: " + (e?.message || e));
     } finally {
@@ -478,12 +629,9 @@
     }
   });
 
-  // ===== Tümü sıfırla (istersen) =====
-  $("clearAll").addEventListener("click", () => {
-    localStorage.removeItem(PREF_KEY);
-    location.reload();
-  });
-
+  // =======================
+  // 11) Liste
+  // =======================
   function escapeHtml(s){
     return String(s)
       .replaceAll("&","&amp;")
@@ -517,7 +665,20 @@
     }
   }
 
-  // ===== Başlat =====
+  // =======================
+  // 12) Reset
+  // =======================
+  $("clearAll").addEventListener("click", () => {
+    if (!confirm("Tüm ayarlar (PIN oturumu/tercihler) sıfırlansın mı?")) return;
+    localStorage.removeItem("santiye_pref_v1");
+    sessionStorage.removeItem("santiye_pin_ok_v1");
+    sessionStorage.removeItem("santiye_pin_hash_v1");
+    location.reload();
+  });
+
+  // =======================
+  // 13) Başlat
+  // =======================
   initDropdowns();
   refreshList();
 
