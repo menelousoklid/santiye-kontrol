@@ -553,89 +553,60 @@
     }
   });
 
-  function sendViaForm(item) {
-  return new Promise((resolve, reject) => {
-    // Kullanıcı tıkladığı için popup açmaya izin verir
-    const w = window.open("about:blank", "sinkwin", "width=420,height=520");
-    if (!w) {
-      return reject(new Error("Popup engellendi. Tarayıcıda açılır pencereye izin ver."));
-    }
-
-    // timeout (20 sn az gelebiliyor, 40 yaptım)
-    const t = setTimeout(() => {
-      pendingResolvers.delete(item.id);
-      try { w.close(); } catch {}
-      reject(new Error("Zaman aşımı (sunucu yanıt vermedi)."));
-    }, 40000);
-
-    pendingResolvers.set(item.id, (data) => {
-      clearTimeout(t);
-      try { w.close(); } catch {}
-      resolve(data);
-    });
-
-    const form = document.createElement("form");
-    form.method = "POST";
-    form.action = ENDPOINT_URL;
-    form.target = "sinkwin";
-
-    const inp = document.createElement("input");
-    inp.type = "hidden";
-    inp.name = "payload";
-    inp.value = JSON.stringify(item);
-
-    form.appendChild(inp);
-    document.body.appendChild(form);
-    form.submit();
-    form.remove();
-  });
-}
+  
 
 
   $("sync").addEventListener("click", async () => {
-    if (!navigator.onLine) return alert("İnternet yok. Online olunca tekrar deneyin.");
-    if (sessionStorage.getItem(SESSION_PIN_OK) !== "1") return showPinOverlay("Senkron için PIN gerekli.");
+  if (!navigator.onLine) return alert("İnternet yok. Online olunca tekrar deneyin.");
+  if (sessionStorage.getItem("santiye_pin_ok_v1") !== "1") return showPinOverlay("Senkron için PIN gerekli.");
 
-    $("sync").disabled = true;
-    try {
-      const all = await dbGetAll();
-      const pending = all.filter(x => !x.sent);
-      if (pending.length === 0) {
-        alert("Gönderilecek kayıt yok.");
-        return;
-      }
-
-      let okCount = 0;
-      for (const item of pending) {
-        // her seferinde güvenlik alanlarını tazele
-        item.deviceId = DEVICE_ID;
-        item.pinHash = getPinHash();
-
-        const res = await sendViaForm(item);
-
-        if (!res.ok) {
-          alert("Gönderim reddedildi:\n\n" + (res.msg || "Bilinmeyen hata") + "\n\nCihaz Kodu:\n" + DEVICE_ID);
-          // reddedildiyse KESİNLİKLE sent yapmıyoruz
-          break;
-        }
-
-        await dbMarkSent(item.id);
-        okCount++;
-        await refreshList();
-      }
-
-      if (okCount > 0) {
-        savePrefs();
-        lastEl.textContent = `• ${okCount} kayıt gönderildi ✔️`;
-        clearAfterSaveOrSend();
-        alert("Gönderildi ✅ Google Sheet (KAYITLAR) ve Drive klasöründen kontrol et.");
-      }
-    } catch (e) {
-      alert("Gönderim durdu: " + (e?.message || e));
-    } finally {
-      $("sync").disabled = false;
+  $("sync").disabled = true;
+  try {
+    const all = await dbGetAll();
+    const pending = all.filter(x => !x.sent);
+    if (pending.length === 0) {
+      alert("Gönderilecek kayıt yok.");
+      return;
     }
-  });
+
+    let okCount = 0;
+
+    for (const item of pending) {
+      item.deviceId = DEVICE_ID;
+      item.pinHash = getPinHash();
+
+      const body = new URLSearchParams({
+        payload: JSON.stringify(item)
+      });
+
+      await fetch(ENDPOINT_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
+        },
+        body
+      });
+
+      await dbMarkSent(item.id);
+      okCount++;
+      await refreshList();
+    }
+
+    if (okCount > 0) {
+      savePrefs();
+      lastEl.textContent = `• ${okCount} kayıt gönderildi ✔️`;
+      clearAfterSaveOrSend();
+      alert("Gönderildi ✅ Google Sheet ve Drive’dan kontrol et.");
+    }
+
+  } catch (e) {
+    alert("Gönderim durdu: " + (e?.message || e));
+  } finally {
+    $("sync").disabled = false;
+  }
+});
+
 
   // =======================
   // 11) Liste
